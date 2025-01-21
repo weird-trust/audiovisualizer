@@ -60,7 +60,7 @@
 
     // Audioquelle erstellen (z.B. ein stummes Audioelement)
     const audioElement = new Audio();
-    audioElement.src = "public/01-SAULT-4am.mp3";
+    audioElement.src = "audio/01-SAULT-4am.mp3";
     audioElement.loop = true;
     audioElement.volume = 1;
     audioElement.play();

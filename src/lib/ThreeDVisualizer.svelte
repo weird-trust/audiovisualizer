@@ -62,12 +62,28 @@
     const audioElement = new Audio();
     audioElement.src = "audio/01-SAULT-4am.mp3";
     audioElement.loop = true;
-    audioElement.volume = 1;
-    audioElement.play();
+    audioElement.volume = 1; // Lautstärke auf 0 setzen, um das Audio stumm zu schalten
 
     const source = audioContext.createMediaElementSource(audioElement);
     source.connect(analyser);
     analyser.connect(audioContext.destination);
+
+    // Event-Listener für Benutzerinteraktion hinzufügen
+    window.addEventListener(
+      "click",
+      () => {
+        // Audio abspielen (stumm) und Animation starten
+        audioElement
+          .play()
+          .then(() => {
+            animate(); // Starte die Animation nach erfolgreichem Abspielen
+          })
+          .catch((error) => {
+            console.error("Audio playback failed:", error);
+          });
+      },
+      { once: true }
+    ); // Event-Listener wird nur einmal ausgeführt
 
     // Animationsfunktion
     function animate() {
@@ -98,8 +114,6 @@
 
       renderer.render(scene, camera);
     }
-
-    animate();
 
     // Fenstergröße überwachen und Renderer anpassen
     window.addEventListener("resize", onWindowResize, false);

@@ -62,6 +62,7 @@
     const audioElement = new Audio();
     audioElement.src = "src/assets/01-SAULT-4am.mp3"; // Pfad zur Audio-Datei
     audioElement.loop = true;
+    audioElement.volume = 0;
     audioElement.play();
 
     const source = audioContext.createMediaElementSource(audioElement);

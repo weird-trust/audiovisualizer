@@ -4,6 +4,19 @@
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 
   let container;
+  let audioContext;
+  let isPlaying = false;
+
+  const initAudio = () => {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+    isPlaying = true;
+    // Your audio visualization logic here
+  };
 
   onMount(() => {
     // Szene, Kamera und Renderer erstellen
@@ -62,28 +75,13 @@
     const audioElement = new Audio();
     audioElement.src = "audio/01-SAULT-4am.mp3";
     audioElement.loop = true;
-    audioElement.volume = 1; // Lautstärke auf 0 setzen, um das Audio stumm zu schalten
+    audioElement.volume = 1;
+    audioElement.muted = false;
+    audioElement.play();
 
     const source = audioContext.createMediaElementSource(audioElement);
     source.connect(analyser);
     analyser.connect(audioContext.destination);
-
-    // Event-Listener für Benutzerinteraktion hinzufügen
-    window.addEventListener(
-      "click",
-      () => {
-        // Audio abspielen (stumm) und Animation starten
-        audioElement
-          .play()
-          .then(() => {
-            animate(); // Starte die Animation nach erfolgreichem Abspielen
-          })
-          .catch((error) => {
-            console.error("Audio playback failed:", error);
-          });
-      },
-      { once: true }
-    ); // Event-Listener wird nur einmal ausgeführt
 
     // Animationsfunktion
     function animate() {
@@ -115,6 +113,8 @@
       renderer.render(scene, camera);
     }
 
+    animate();
+
     // Fenstergröße überwachen und Renderer anpassen
     window.addEventListener("resize", onWindowResize, false);
 
@@ -126,10 +126,31 @@
   });
 </script>
 
-<div bind:this={container} style="width: 100vw; height: 100vh;"></div>
+<div bind:this={container}>
+  {#if !isPlaying}
+    <button class="start-button" on:click={initAudio}>
+      Start Visualization
+    </button>
+  {/if}
+</div>
 
 <style>
-  div {
-    display: block;
+  .start-button {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    background: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    z-index: 1000;
+  }
+
+  .start-button:hover {
+    background: #45a049;
   }
 </style>

@@ -5,21 +5,39 @@
 
   let container;
   let audioContext;
+  let analyser;
+  let audioElement;
+  let source;
+  let dataArray;
+  let sphereMesh;
+  let geometry;
   let isPlaying = false;
 
-  const initAudio = () => {
-    if (!audioContext) {
+  const initAudio = async () => {
+    try {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      audioElement = new Audio();
+      audioElement.src = "audio/01-SAULT-4am.mp3";
+      audioElement.loop = true;
+
+      source = audioContext.createMediaElementSource(audioElement);
+      source.connect(analyser);
+      analyser.connect(audioContext.destination);
+
+      await audioElement.play();
+      isPlaying = true;
+    } catch (error) {
+      console.error("Error initializing audio:", error);
+      isPlaying = false;
     }
-    if (audioContext.state === "suspended") {
-      audioContext.resume();
-    }
-    isPlaying = true;
-    // Your audio visualization logic here
   };
 
   onMount(() => {
-    // Szene, Kamera und Renderer erstellen
+    // Scene setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -29,100 +47,73 @@
     );
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0xffffff, 1); // Hintergrundfarbe des Renderers auf Weiß setzen
+    renderer.setClearColor(0xffffff, 1);
     container.appendChild(renderer.domElement);
 
-    // Licht hinzufügen
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(0, 1, 1).normalize();
     scene.add(light);
 
-    // Benutzerdefinierte Geometrie für die Kugel erstellen
-    const radius = 5;
-    const widthSegments = 64;
-    const heightSegments = 64;
-    const geometry = new THREE.SphereGeometry(
-      radius,
-      widthSegments,
-      heightSegments
-    );
-
-    // Material für das Mesh erstellen
+    // Sphere setup
+    geometry = new THREE.SphereGeometry(5, 64, 64);
     const material = new THREE.MeshPhongMaterial({
       color: 0x000aa,
       side: THREE.DoubleSide,
       wireframe: true
     });
-    const sphereMesh = new THREE.Mesh(geometry, material);
+    sphereMesh = new THREE.Mesh(geometry, material);
     scene.add(sphereMesh);
 
     camera.position.z = 15;
 
-    // OrbitControls hinzufügen
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
     controls.enableZoom = true;
 
-    // Audio-Setup
-    const audioContext = new (window.AudioContext ||
-      window.webkitAudioContext)();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    // Audioquelle erstellen (z.B. ein stummes Audioelement)
-    const audioElement = new Audio();
-    audioElement.src = "audio/01-SAULT-4am.mp3";
-    audioElement.loop = true;
-    audioElement.volume = 1;
-    audioElement.muted = false;
-    audioElement.play();
-
-    const source = audioContext.createMediaElementSource(audioElement);
-    source.connect(analyser);
-    analyser.connect(audioContext.destination);
-
-    // Animationsfunktion
+    // Animation function
     function animate() {
       requestAnimationFrame(animate);
 
-      analyser.getByteFrequencyData(dataArray);
+      if (isPlaying && analyser && dataArray) {
+        analyser.getByteFrequencyData(dataArray);
+        const positionAttribute = geometry.attributes.position;
 
-      // Vertices der Geometrie basierend auf den Audiodaten animieren
-      const positionAttribute = geometry.attributes.position;
-      for (let i = 0; i < positionAttribute.count; i++) {
-        const x = positionAttribute.getX(i);
-        const y = positionAttribute.getY(i);
-        const z = positionAttribute.getZ(i);
-
-        // Verstärkte Wellenbewegung basierend auf Audiodaten
-        const waveHeight = dataArray[i % dataArray.length] / 5000;
-        const newZ = z + Math.sin(x * 2 + Date.now() * 0.01) * waveHeight * 2;
-
-        positionAttribute.setZ(i, newZ);
+        for (let i = 0; i < positionAttribute.count; i++) {
+          const x = positionAttribute.getX(i);
+          const y = positionAttribute.getY(i);
+          const z = positionAttribute.getZ(i);
+          const waveHeight = dataArray[i % dataArray.length] / 5000;
+          const newZ = z + Math.sin(x * 2 + Date.now() * 0.01) * waveHeight * 2;
+          positionAttribute.setZ(i, newZ);
+        }
+        positionAttribute.needsUpdate = true;
       }
-      positionAttribute.needsUpdate = true;
 
-      // Standardmäßige Rotation des Meshes
       sphereMesh.rotation.x += 0.0015;
       sphereMesh.rotation.y += 0.0015;
 
       controls.update();
-
       renderer.render(scene, camera);
     }
 
     animate();
 
-    // Fenstergröße überwachen und Renderer anpassen
-    window.addEventListener("resize", onWindowResize, false);
-
-    function onWindowResize() {
+    // Window resize handler
+    const onWindowResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
-    }
+    };
+
+    window.addEventListener("resize", onWindowResize, false);
+
+    return () => {
+      window.removeEventListener("resize", onWindowResize);
+      if (audioContext) {
+        audioContext.close();
+      }
+    };
   });
 </script>
 
@@ -142,7 +133,7 @@
     transform: translate(-50%, -50%);
     padding: 1rem 2rem;
     font-size: 1.2rem;
-    background: #4caf50;
+    background: blue;
     color: white;
     border: none;
     border-radius: 4px;
@@ -151,6 +142,6 @@
   }
 
   .start-button:hover {
-    background: #45a049;
+    background: rgba(0, 0, 255, 0.483);
   }
 </style>

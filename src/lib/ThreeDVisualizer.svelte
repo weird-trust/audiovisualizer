@@ -7,13 +7,12 @@
   let dataArray = [];
   let sphereMesh;
   let geometry;
-  let isPlaying = false;
   let currentFrame = 0;
   let frameInterval;
-  let waveAmplitude = 0.1; // Reduced from 0.3
-  let waveSpeed = 0.001; // Reduced from 0.005
-  let waveDivisor = 51200; // Doubled from 25600
-  let waveFrequency = 0.5; // Reduced from 1
+  let waveAmplitude = 0.1;
+  let waveSpeed = 0.001;
+  let waveDivisor = 51200;
+  let waveFrequency = 0.5;
 
   async function loadFrequencyData() {
     try {
@@ -29,14 +28,13 @@
   async function initVisualization() {
     dataArray = await loadFrequencyData();
     if (dataArray.length > 0) {
-      isPlaying = true;
       frameInterval = setInterval(() => {
         currentFrame = (currentFrame + 1) % dataArray.length;
       }, 100);
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -49,30 +47,41 @@
     renderer.setClearColor(0xffffff, 1);
     container.appendChild(renderer.domElement);
 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
     const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(0, 1, 1).normalize();
+    light.position.set(1, 1, 0).normalize();
     scene.add(light);
 
-    geometry = new THREE.SphereGeometry(5, 64, 64);
+    geometry = new THREE.TorusGeometry(10, 3, 50, 250);
+    // geometry = new THREE.PlaneGeometry(25, 25, 50, 50);
+
     const material = new THREE.MeshPhongMaterial({
-      color: 0x000aa,
-      side: THREE.DoubleSide,
-      wireframe: true
+      color: 0xff0000,
+      wireframe: true,
+      side: THREE.DoubleSide, // Enable double-sided rendering
+      emissive: 0xff0000, // Add emissive color
+      emissiveIntensity: 0.2
     });
     sphereMesh = new THREE.Mesh(geometry, material);
+    sphereMesh.rotation.x = Math.PI / 2;
     scene.add(sphereMesh);
 
-    camera.position.z = 15;
+    camera.position.set(25, 0, 0);
+    camera.lookAt(0, 0, 0);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
     controls.enableZoom = true;
 
+    await initVisualization();
+
     function animate() {
       requestAnimationFrame(animate);
 
-      if (isPlaying && dataArray.length > 0) {
+      if (dataArray.length > 0) {
         const positionAttribute = geometry.attributes.position;
         const currentData = dataArray[currentFrame];
 
@@ -80,21 +89,19 @@
           const x = positionAttribute.getX(i);
           const y = positionAttribute.getY(i);
           const z = positionAttribute.getZ(i);
-          // Scaled wave calculation
           const waveHeight =
             (currentData[i % currentData.length] / waveDivisor) * waveAmplitude;
           const newZ =
             z +
             Math.sin(x * waveFrequency + Date.now() * waveSpeed) *
               waveHeight *
-              0.5;
+              3.5;
           positionAttribute.setZ(i, newZ);
         }
         positionAttribute.needsUpdate = true;
       }
 
-      sphereMesh.rotation.x += 0.001;
-      sphereMesh.rotation.y += 0.001;
+      sphereMesh.rotation.z += 0.0009;
 
       controls.update();
       renderer.render(scene, camera);
@@ -118,66 +125,41 @@
 </script>
 
 <div bind:this={container}>
-  {#if !isPlaying}
-    <button class="start-button" on:click={initVisualization}>
-      Start Visualization
-    </button>
-  {:else}
-    <div class="controls">
-      <label>
-        Wave Height
-        <input
-          type="range"
-          min="0"
-          max="0.5"
-          step="0.01"
-          bind:value={waveAmplitude}
-        />
-      </label>
-      <label>
-        Wave Speed
-        <input
-          type="range"
-          min="0.0001"
-          max="0.002"
-          step="0.0001"
-          bind:value={waveSpeed}
-        />
-      </label>
-      <label>
-        Wave Frequency
-        <input
-          type="range"
-          min="0.1"
-          max="1"
-          step="0.1"
-          bind:value={waveFrequency}
-        />
-      </label>
-    </div>
-  {/if}
+  <div class="controls">
+    <label>
+      Wave Height
+      <input
+        type="range"
+        min="0"
+        max="0.5"
+        step="0.01"
+        bind:value={waveAmplitude}
+      />
+    </label>
+    <label>
+      Wave Speed
+      <input
+        type="range"
+        min="0.0001"
+        max="0.002"
+        step="0.0001"
+        bind:value={waveSpeed}
+      />
+    </label>
+    <label>
+      Wave Frequency
+      <input
+        type="range"
+        min="0.1"
+        max="1"
+        step="0.1"
+        bind:value={waveFrequency}
+      />
+    </label>
+  </div>
 </div>
 
 <style>
-  .start-button {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    padding: 1rem 2rem;
-    font-size: 1.2rem;
-    background: blue;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    z-index: 1000;
-  }
-
-  .start-button:hover {
-    background: rgba(0, 0, 255, 0.483);
-  }
-
   .controls {
     position: fixed;
     top: 20px;
@@ -189,12 +171,12 @@
     z-index: 1000;
   }
 
-  .controls label {
+  label {
     display: block;
     margin: 10px 0;
   }
 
-  .controls input {
+  input {
     width: 100%;
     margin-top: 5px;
   }

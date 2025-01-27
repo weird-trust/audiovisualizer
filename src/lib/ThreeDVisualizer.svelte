@@ -13,6 +13,10 @@
   let waveSpeed = 0.001;
   let waveDivisor = 51200;
   let waveFrequency = 0.5;
+  let isMobile = window.innerWidth < 768;
+  let torusSize = isMobile ? 5 : 10;
+  let torusThickness = isMobile ? 1.5 : 3;
+  let cameraDistance = isMobile ? 15 : 25;
 
   async function loadFrequencyData() {
     try {
@@ -54,21 +58,21 @@
     light.position.set(1, 1, 0).normalize();
     scene.add(light);
 
-    geometry = new THREE.TorusGeometry(10, 3, 50, 250);
-    // geometry = new THREE.PlaneGeometry(25, 25, 50, 50);
+    geometry = new THREE.TorusGeometry(torusSize, torusThickness, 50, 25);
 
     const material = new THREE.MeshPhongMaterial({
       color: 0xff0000,
       wireframe: true,
-      side: THREE.DoubleSide, // Enable double-sided rendering
-      emissive: 0xff0000, // Add emissive color
+      side: THREE.DoubleSide,
+      emissive: 0xff0000,
       emissiveIntensity: 0.2
     });
+
     sphereMesh = new THREE.Mesh(geometry, material);
     sphereMesh.rotation.x = Math.PI / 2;
     scene.add(sphereMesh);
 
-    camera.position.set(25, 0, 0);
+    camera.position.set(cameraDistance, 0, 0);
     camera.lookAt(0, 0, 0);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -95,7 +99,7 @@
             z +
             Math.sin(x * waveFrequency + Date.now() * waveSpeed) *
               waveHeight *
-              3.5;
+              (isMobile ? 2 : 3.5);
           positionAttribute.setZ(i, newZ);
         }
         positionAttribute.needsUpdate = true;
@@ -110,7 +114,13 @@
     animate();
 
     const onWindowResize = () => {
+      isMobile = window.innerWidth < 768;
+      torusSize = isMobile ? 5 : 10;
+      torusThickness = isMobile ? 1.5 : 3;
+      cameraDistance = isMobile ? 15 : 25;
+
       camera.aspect = window.innerWidth / window.innerHeight;
+      camera.position.set(cameraDistance, 0, 0);
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
@@ -124,60 +134,14 @@
   });
 </script>
 
-<div bind:this={container}>
-  <div class="controls">
-    <label>
-      Wave Height
-      <input
-        type="range"
-        min="0"
-        max="0.5"
-        step="0.01"
-        bind:value={waveAmplitude}
-      />
-    </label>
-    <label>
-      Wave Speed
-      <input
-        type="range"
-        min="0.0001"
-        max="0.002"
-        step="0.0001"
-        bind:value={waveSpeed}
-      />
-    </label>
-    <label>
-      Wave Frequency
-      <input
-        type="range"
-        min="0.1"
-        max="1"
-        step="0.1"
-        bind:value={waveFrequency}
-      />
-    </label>
-  </div>
-</div>
+<svelte:head>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  />
+</svelte:head>
+
+<div bind:this={container}></div>
 
 <style>
-  .controls {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 1rem;
-    border-radius: 8px;
-    color: white;
-    z-index: 1000;
-  }
-
-  label {
-    display: block;
-    margin: 10px 0;
-  }
-
-  input {
-    width: 100%;
-    margin-top: 5px;
-  }
 </style>

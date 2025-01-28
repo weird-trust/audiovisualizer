@@ -9,6 +9,7 @@
   let geometry;
   let currentFrame = 0;
   let frameInterval;
+  let showControls = true;
   let previousData = [];
   let initialPositions = [];
   let isMobile = window.innerWidth < 768;
@@ -28,6 +29,10 @@
     torusThickness: isMobile ? 1.5 : 3,
     cameraDistance: isMobile ? 15 : 25
   };
+
+  function toggleControls() {
+    showControls = !showControls;
+  }
 
   async function loadFrequencyData() {
     try {
@@ -180,7 +185,111 @@
   />
 </svelte:head>
 
-<div bind:this={container}></div>
+<div class="canvas-container" bind:this={container}></div>
+
+<button class="toggle-controls" on:click={toggleControls}>
+  {showControls ? "✕" : "⚙️"}
+</button>
+
+{#if showControls}
+  <div class="controls-panel">
+    <div class="control-group">
+      <label>
+        Wave Amplitude
+        <div class="control-row">
+          <input
+            type="range"
+            bind:value={params.waveAmplitude}
+            min="0"
+            max="1"
+            step="0.1"
+          />
+          <span>{params.waveAmplitude}</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        Wave Speed
+        <div class="control-row">
+          <input
+            type="range"
+            bind:value={params.waveSpeed}
+            min="0"
+            max="0.02"
+            step="0.001"
+          />
+          <span>{params.waveSpeed}</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        Wave Divisor
+        <div class="control-row">
+          <input
+            type="range"
+            bind:value={params.waveDivisor}
+            min="5000"
+            max="25000"
+            step="1000"
+          />
+          <span>{params.waveDivisor}</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        Wave Frequency
+        <div class="control-row">
+          <input
+            type="range"
+            bind:value={params.waveFrequency}
+            min="0"
+            max="2"
+            step="0.1"
+          />
+          <span>{params.waveFrequency}</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        Smoothing Factor
+        <div class="control-row">
+          <input
+            type="range"
+            bind:value={params.smoothingFactor}
+            min="0"
+            max="1"
+            step="0.1"
+          />
+          <span>{params.smoothingFactor}</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="control-group">
+      <label>
+        Bass Boost
+        <div class="control-row">
+          <input
+            type="range"
+            bind:value={params.bassBoost}
+            min="1"
+            max="4"
+            step="0.1"
+          />
+          <span>{params.bassBoost}</span>
+        </div>
+      </label>
+    </div>
+  </div>
+{/if}
 
 <a
   href={spotifyUrl}
@@ -192,7 +301,7 @@
 </a>
 
 <style>
-  div {
+  /* div {
     width: 100vw;
     height: 100vh;
     margin: 0;
@@ -201,7 +310,7 @@
     position: fixed;
     top: 0;
     left: 0;
-  }
+  } */
 
   .spotify-link {
     position: fixed;
@@ -235,6 +344,97 @@
   @media (max-width: 768px) {
     .spotify-link img {
       width: 70vw;
+    }
+  }
+
+  .canvas-container {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+
+  .toggle-controls {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1001;
+    padding: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .controls-panel {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .control-group {
+    width: 100%;
+    margin-bottom: 15px;
+    gap: 8px;
+  }
+
+  .control-group label {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 4px;
+  }
+
+  .control-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .control-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+
+  .control-row span {
+    min-width: 45px;
+    text-align: right;
+    font-family: monospace;
+  }
+
+  @media (max-width: 768px) {
+    .controls-panel {
+      top: auto;
+      bottom: 80px;
+      right: 10px;
+      width: calc(100vw - 60px);
+      max-width: 300px;
     }
   }
 

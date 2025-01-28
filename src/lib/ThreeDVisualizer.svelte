@@ -188,7 +188,7 @@
   rel="noopener noreferrer"
   class="spotify-link"
 >
-  <img src={imageUrl} alt="Spotify" />
+  <img src={imageUrl} alt="Spotify" draggable="false" />
 </a>
 
 <style>
@@ -210,15 +210,26 @@
     transform: translate(-50%, -50%);
     z-index: 1000;
     transition: transform 0.3s ease;
-  }
-
-  .spotify-link:hover {
-    transform: translate(-50%, -50%) scale(1.1);
+    user-select: none;
+    text-decoration: none;
+    color: transparent;
+    cursor: pointer;
   }
 
   .spotify-link img {
     width: 50vw;
     height: auto;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    display: block;
+  }
+
+  .spotify-link:hover {
+    transform: translate(-50%, -50%) scale(1.1);
   }
 
   @media (max-width: 768px) {

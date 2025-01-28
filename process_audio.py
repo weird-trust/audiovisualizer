@@ -2,7 +2,7 @@ from scipy.io import wavfile
 import numpy as np
 import json
 
-def process_audio(file_path, output_path, window_size=1024, reduction_factor=16):
+def process_audio(file_path, output_path, window_size=1024, reduction_factor=4):
     # Lade die WAV-Datei
     sample_rate, samples = wavfile.read(file_path)
 

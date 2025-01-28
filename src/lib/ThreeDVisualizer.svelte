@@ -9,14 +9,25 @@
   let geometry;
   let currentFrame = 0;
   let frameInterval;
-  let waveAmplitude = 0.1;
-  let waveSpeed = 0.001;
-  let waveDivisor = 51200;
-  let waveFrequency = 0.5;
+  let previousData = [];
+  let initialPositions = [];
   let isMobile = window.innerWidth < 768;
-  let torusSize = isMobile ? 5 : 10;
-  let torusThickness = isMobile ? 1.5 : 3;
-  let cameraDistance = isMobile ? 15 : 25;
+  let spotifyUrl =
+    "https://open.spotify.com/playlist/4yoqHUBDI7nR0Ca3XZW5rp?si=feb42eda2fa3467c";
+  let imageUrl = "/unstable.png";
+
+  // Enhanced visualization parameters
+  const params = {
+    waveAmplitude: 0.3,
+    waveSpeed: 0.008,
+    waveDivisor: 15000,
+    waveFrequency: 0.5,
+    smoothingFactor: 0.3,
+    bassBoost: 1.5,
+    torusSize: isMobile ? 5 : 10,
+    torusThickness: isMobile ? 1.5 : 3,
+    cameraDistance: isMobile ? 15 : 25
+  };
 
   async function loadFrequencyData() {
     try {
@@ -34,7 +45,7 @@
     if (dataArray.length > 0) {
       frameInterval = setInterval(() => {
         currentFrame = (currentFrame + 1) % dataArray.length;
-      }, 100);
+      }, 16);
     }
   }
 
@@ -46,33 +57,32 @@
       0.1,
       1000
     );
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(0xffffff, 1);
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
+    geometry = new THREE.TorusGeometry(
+      params.torusSize,
+      params.torusThickness,
+      32,
+      32
+    );
 
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(1, 1, 0).normalize();
-    scene.add(light);
-
-    geometry = new THREE.TorusGeometry(torusSize, torusThickness, 50, 25);
+    initialPositions = [...geometry.attributes.position.array];
 
     const material = new THREE.MeshPhongMaterial({
-      color: 0xff0000,
+      color: 0x000000,
       wireframe: true,
-      side: THREE.DoubleSide,
-      emissive: 0xff0000,
-      emissiveIntensity: 0.2
+      side: THREE.DoubleSide
     });
 
     sphereMesh = new THREE.Mesh(geometry, material);
     sphereMesh.rotation.x = Math.PI / 2;
     scene.add(sphereMesh);
 
-    camera.position.set(cameraDistance, 0, 0);
+    camera.position.set(params.cameraDistance, 0, 0);
     camera.lookAt(0, 0, 0);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -89,24 +99,53 @@
         const positionAttribute = geometry.attributes.position;
         const currentData = dataArray[currentFrame];
 
+        // Initialize previousData if needed
+        if (previousData.length === 0) {
+          previousData = [...currentData];
+        }
+
         for (let i = 0; i < positionAttribute.count; i++) {
           const x = positionAttribute.getX(i);
           const y = positionAttribute.getY(i);
           const z = positionAttribute.getZ(i);
+
+          // Frequency band processing
+          const frequencyIndex = i % currentData.length;
+          const frequency =
+            Math.pow(frequencyIndex / currentData.length, 1.5) *
+            currentData.length;
+          const dataIndex = Math.floor(frequency);
+
+          // Smooth transition between frames
+          const currentValue = currentData[dataIndex] || 0;
+          previousData[dataIndex] = previousData[dataIndex] || 0;
+          const smoothedValue =
+            currentValue * (1 - params.smoothingFactor) +
+            previousData[dataIndex] * params.smoothingFactor;
+          previousData[dataIndex] = smoothedValue;
+
+          // Apply bass boost to lower frequencies
+          const bassBoostFactor =
+            dataIndex < currentData.length / 4 ? params.bassBoost : 1;
+
+          // Calculate wave height with frequency scaling
           const waveHeight =
-            (currentData[i % currentData.length] / waveDivisor) * waveAmplitude;
+            Math.log(1 + smoothedValue / params.waveDivisor) *
+            params.waveAmplitude *
+            bassBoostFactor;
+
           const newZ =
             z +
-            Math.sin(x * waveFrequency + Date.now() * waveSpeed) *
+            Math.sin(x * params.waveFrequency + Date.now() * params.waveSpeed) *
               waveHeight *
-              (isMobile ? 2 : 3.5);
+              (isMobile ? 2.5 : 4.0);
+
           positionAttribute.setZ(i, newZ);
         }
         positionAttribute.needsUpdate = true;
       }
 
-      sphereMesh.rotation.z += 0.0009;
-
+      sphereMesh.rotation.z += 0.0002;
       controls.update();
       renderer.render(scene, camera);
     }
@@ -115,12 +154,12 @@
 
     const onWindowResize = () => {
       isMobile = window.innerWidth < 768;
-      torusSize = isMobile ? 5 : 10;
-      torusThickness = isMobile ? 1.5 : 3;
-      cameraDistance = isMobile ? 15 : 25;
+      params.torusSize = isMobile ? 5 : 10;
+      params.torusThickness = isMobile ? 1.5 : 3;
+      params.cameraDistance = isMobile ? 15 : 25;
 
       camera.aspect = window.innerWidth / window.innerHeight;
-      camera.position.set(cameraDistance, 0, 0);
+      camera.position.set(params.cameraDistance, 0, 0);
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
@@ -143,5 +182,54 @@
 
 <div bind:this={container}></div>
 
+<a
+  href={spotifyUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  class="spotify-link"
+>
+  <img src={imageUrl} alt="Spotify" />
+</a>
+
 <style>
+  div {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+
+  .spotify-link {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    transition: transform 0.3s ease;
+  }
+
+  .spotify-link:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+
+  .spotify-link img {
+    width: 50vw;
+    height: auto;
+  }
+
+  @media (max-width: 768px) {
+    .spotify-link img {
+      width: 70vw;
+    }
+  }
+
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
 </style>

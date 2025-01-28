@@ -9,7 +9,7 @@
   let geometry;
   let currentFrame = 0;
   let frameInterval;
-  let showControls = true;
+  let showControls = false;
   let previousData = [];
   let initialPositions = [];
   let isMobile = window.innerWidth < 768;

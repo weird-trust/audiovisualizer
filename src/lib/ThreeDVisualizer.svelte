@@ -17,17 +17,29 @@
     "https://open.spotify.com/playlist/4yoqHUBDI7nR0Ca3XZW5rp?si=feb42eda2fa3467c";
   let imageUrl = "/unstable.png";
 
+  // Audio-spezifische Variablen
+  let audioContext;
+  let analyser;
+  let audioSource;
+  let frequencyData;
+  let audioFile;
+  let isPlaying = false;
+  let audioElement;
+  let audioFileName = "Keine Datei ausgewählt";
+  let visualizationType = "audio"; // 'audio' oder 'json'
+
   // Enhanced visualization parameters
   const params = {
     waveAmplitude: 0.3,
     waveSpeed: 0.008,
     waveDivisor: 15000,
     waveFrequency: 0.5,
-    smoothingFactor: 0.3,
-    bassBoost: 1.5,
+    smoothingFactor: 0.5,
+    bassBoost: 0.5,
     torusSize: isMobile ? 5 : 10,
     torusThickness: isMobile ? 1.5 : 3,
-    cameraDistance: isMobile ? 15 : 25
+    cameraDistance: isMobile ? 15 : 25,
+    fftSize: 1024 // Für Audio-Analyse, muss eine Potenz von 2 sein
   };
 
   function toggleControls() {
@@ -45,12 +57,119 @@
     }
   }
 
+  async function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (file) {
+      if (file.type.startsWith("audio/")) {
+        // Audio-Datei wurde hochgeladen
+        handleAudioUpload(file);
+      } else {
+        // JSON-Datei mit Frequenzdaten wurde hochgeladen
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const data = JSON.parse(e.target.result);
+            dataArray = data;
+            visualizationType = "json";
+            if (dataArray.length > 0) {
+              if (frameInterval) clearInterval(frameInterval);
+              frameInterval = setInterval(() => {
+                currentFrame = (currentFrame + 1) % dataArray.length;
+              }, 16);
+            }
+          } catch (error) {
+            console.error("Error parsing uploaded file:", error);
+          }
+        };
+        reader.readAsText(file);
+      }
+    }
+  }
+
+  function handleAudioUpload(file) {
+    if (audioSource) {
+      audioSource.disconnect();
+    }
+
+    audioFileName = file.name;
+    audioFile = file;
+    visualizationType = "audio";
+
+    if (audioElement) {
+      URL.revokeObjectURL(audioElement.src);
+    }
+
+    initAudio();
+  }
+
+  function initAudio() {
+    if (!audioFile) return;
+
+    // Erstelle Audio-Element
+    if (!audioElement) {
+      audioElement = new Audio();
+    }
+
+    // Audio-Kontext erstellen, wenn er noch nicht existiert
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Frequenzdaten-Array erstellen
+    if (!analyser) {
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = params.fftSize;
+      frequencyData = new Uint8Array(analyser.frequencyBinCount);
+    } else {
+      analyser.fftSize = params.fftSize;
+      frequencyData = new Uint8Array(analyser.frequencyBinCount);
+    }
+
+    // Audio-Element-Quelle erstellen
+    const fileURL = URL.createObjectURL(audioFile);
+    audioElement.src = fileURL;
+    audioElement.load();
+
+    // Audio-Quelle mit Analyzer verbinden
+    if (audioSource) {
+      audioSource.disconnect();
+    }
+
+    audioSource = audioContext.createMediaElementSource(audioElement);
+    audioSource.connect(analyser);
+    analyser.connect(audioContext.destination);
+
+    // Event-Listener für Audio-Ende
+    audioElement.addEventListener("ended", () => {
+      isPlaying = false;
+    });
+  }
+
+  function toggleAudio() {
+    if (!audioElement || !audioFile) return;
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+
+    if (isPlaying) {
+      audioElement.pause();
+      isPlaying = false;
+    } else {
+      audioElement.play();
+      isPlaying = true;
+    }
+  }
+
   async function initVisualization() {
-    dataArray = await loadFrequencyData();
-    if (dataArray.length > 0) {
-      frameInterval = setInterval(() => {
-        currentFrame = (currentFrame + 1) % dataArray.length;
-      }, 16);
+    if (visualizationType === "json") {
+      dataArray = await loadFrequencyData();
+      if (dataArray.length > 0) {
+        if (frameInterval) clearInterval(frameInterval);
+        frameInterval = setInterval(() => {
+          currentFrame = (currentFrame + 1) % dataArray.length;
+        }, 16);
+      }
     }
   }
 
@@ -87,6 +206,14 @@
     sphereMesh.rotation.x = Math.PI / 2;
     scene.add(sphereMesh);
 
+    // Beleuchtung hinzufügen
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(10, 10, 10);
+    scene.add(directionalLight);
+
     camera.position.set(params.cameraDistance, 0, 0);
     camera.lookAt(0, 0, 0);
 
@@ -100,8 +227,58 @@
     function animate() {
       requestAnimationFrame(animate);
 
-      if (dataArray.length > 0) {
-        const positionAttribute = geometry.attributes.position;
+      const positionAttribute = geometry.attributes.position;
+
+      if (visualizationType === "audio" && analyser && isPlaying) {
+        // Audio-Visualisierung
+        analyser.getByteFrequencyData(frequencyData);
+
+        // Daten normalisieren (0-255 zu 0-1)
+        const normalizedData = Array.from(frequencyData).map(
+          (val) => val / 255
+        );
+
+        for (let i = 0; i < positionAttribute.count; i++) {
+          const x = positionAttribute.getX(i);
+          const y = positionAttribute.getY(i);
+          const z = initialPositions[i * 3 + 2]; // Original Z-Position
+
+          // Frequenzband-Verarbeitung
+          const frequencyIndex = i % normalizedData.length;
+          const frequency =
+            Math.pow(frequencyIndex / normalizedData.length, 2.5) *
+            normalizedData.length;
+          const dataIndex = Math.floor(frequency);
+
+          // Glatte Übergänge zwischen Frames
+          const currentValue = normalizedData[dataIndex] || 0;
+          previousData[dataIndex] = previousData[dataIndex] || 0;
+          const smoothedValue =
+            currentValue * (1 - params.smoothingFactor) +
+            previousData[dataIndex] * params.smoothingFactor;
+          previousData[dataIndex] = smoothedValue;
+
+          // Bass-Boost für niedrigere Frequenzen
+          const bassBoostFactor =
+            dataIndex < normalizedData.length / 4 ? params.bassBoost : 1;
+
+          // Wellenhöhe mit Frequenzskalierung berechnen
+          const waveHeight =
+            smoothedValue *
+            params.waveAmplitude *
+            bassBoostFactor *
+            (isMobile ? 2.5 : 4.0);
+
+          const newZ =
+            z +
+            Math.sin(x * params.waveFrequency + Date.now() * params.waveSpeed) *
+              waveHeight;
+
+          positionAttribute.setZ(i, newZ);
+        }
+        positionAttribute.needsUpdate = true;
+      } else if (visualizationType === "json" && dataArray.length > 0) {
+        // JSON-Daten-Visualisierung (vorhandener Code)
         const currentData = dataArray[currentFrame];
 
         // Initialize previousData if needed
@@ -117,7 +294,7 @@
           // Frequency band processing
           const frequencyIndex = i % currentData.length;
           const frequency =
-            Math.pow(frequencyIndex / currentData.length, 1.5) *
+            Math.pow(frequencyIndex / currentData.length, 2.5) *
             currentData.length;
           const dataIndex = Math.floor(frequency);
 
@@ -174,6 +351,13 @@
     return () => {
       window.removeEventListener("resize", onWindowResize);
       if (frameInterval) clearInterval(frameInterval);
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.src = "";
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
     };
   });
 </script>
@@ -193,6 +377,56 @@
 
 {#if showControls}
   <div class="controls-panel">
+    <div class="control-group">
+      <h3>Audiodatei hochladen</h3>
+      <div class="control-row">
+        <input
+          type="file"
+          accept="audio/*,.json"
+          on:change={handleFileUpload}
+        />
+      </div>
+      {#if audioFileName}
+        <div class="filename">{audioFileName}</div>
+      {/if}
+    </div>
+
+    {#if visualizationType === "audio" && audioFile}
+      <div class="control-group">
+        <div class="audio-controls">
+          <button class="audio-button" on:click={toggleAudio}>
+            {isPlaying ? "Pause" : "Play"}
+          </button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>
+          FFT Size (Frequenzauflösung)
+          <div class="control-row">
+            <select
+              bind:value={params.fftSize}
+              on:change={() => {
+                if (analyser) {
+                  analyser.fftSize = params.fftSize;
+                  frequencyData = new Uint8Array(analyser.frequencyBinCount);
+                }
+              }}
+            >
+              <option value={256}>256</option>
+              <option value={512}>512</option>
+              <option value={1024}>1024</option>
+              <option value={2048}>2048</option>
+              <option value={4096}>4096</option>
+              <option value={8192}>8192</option>
+            </select>
+          </div>
+        </label>
+      </div>
+    {/if}
+
+    <hr />
+
     <div class="control-group">
       <label>
         Wave Amplitude
@@ -225,21 +459,23 @@
       </label>
     </div>
 
-    <div class="control-group">
-      <label>
-        Wave Divisor
-        <div class="control-row">
-          <input
-            type="range"
-            bind:value={params.waveDivisor}
-            min="5000"
-            max="25000"
-            step="1000"
-          />
-          <span>{params.waveDivisor}</span>
-        </div>
-      </label>
-    </div>
+    {#if visualizationType === "json"}
+      <div class="control-group">
+        <label>
+          Wave Divisor
+          <div class="control-row">
+            <input
+              type="range"
+              bind:value={params.waveDivisor}
+              min="5000"
+              max="25000"
+              step="1000"
+            />
+            <span>{params.waveDivisor}</span>
+          </div>
+        </label>
+      </div>
+    {/if}
 
     <div class="control-group">
       <label>
@@ -390,12 +626,19 @@
     display: flex;
     flex-direction: column;
     gap: 15px;
+    max-height: 80vh;
+    overflow-y: auto;
   }
 
   .control-group {
     width: 100%;
     margin-bottom: 15px;
-    gap: 8px;
+  }
+
+  .control-group h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
   }
 
   .control-group label {
@@ -414,18 +657,55 @@
     margin-bottom: 8px;
   }
 
-  .control-row input {
+  .control-row input[type="range"] {
     flex: 1;
     min-width: 0;
-    padding: 6px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+  }
+
+  .control-row input[type="file"] {
+    width: 100%;
   }
 
   .control-row span {
     min-width: 45px;
     text-align: right;
     font-family: monospace;
+  }
+
+  .filename {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .audio-controls {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+  }
+
+  .audio-button {
+    padding: 8px 16px;
+    background-color: #000;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+  }
+
+  .audio-button:hover {
+    background-color: #333;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 10px 0;
   }
 
   @media (max-width: 768px) {
@@ -435,6 +715,7 @@
       right: 10px;
       width: calc(100vw - 60px);
       max-width: 300px;
+      max-height: 60vh;
     }
   }
 

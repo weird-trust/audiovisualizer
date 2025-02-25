@@ -28,6 +28,12 @@
   let audioFileName = "Keine Datei ausgewählt";
   let visualizationType = "audio"; // 'audio' oder 'json'
 
+  // Aufzeichnungs-Variablen
+  let isRecording = false;
+  let recordedData = [];
+  let recordStartTime = 0;
+  let recordingInterval = 3; // Nur jeden 3. Frame aufzeichnen (für kleinere Dateien)
+
   // Enhanced visualization parameters
   const params = {
     waveAmplitude: 0.3,
@@ -68,8 +74,26 @@
         const reader = new FileReader();
         reader.onload = async (e) => {
           try {
-            const data = JSON.parse(e.target.result);
-            dataArray = data;
+            const parsedData = JSON.parse(e.target.result);
+
+            // Prüfe, ob es das neue Format mit Metadaten ist
+            if (parsedData.frames && Array.isArray(parsedData.frames)) {
+              dataArray = parsedData.frames;
+
+              // Zeige Metadaten an, wenn vorhanden
+              if (parsedData.metadata) {
+                console.log("Geladene Metadaten:", parsedData.metadata);
+                audioFileName =
+                  parsedData.metadata.originalFile || "Unbekannte Datei";
+              }
+            }
+            // Kompatibilität mit dem alten Format (reine Array-Struktur)
+            else if (Array.isArray(parsedData)) {
+              dataArray = parsedData;
+            } else {
+              throw new Error("Unbekanntes Datenformat");
+            }
+
             visualizationType = "json";
             if (dataArray.length > 0) {
               if (frameInterval) clearInterval(frameInterval);
@@ -79,6 +103,7 @@
             }
           } catch (error) {
             console.error("Error parsing uploaded file:", error);
+            alert("Fehler beim Laden der Datei: " + error.message);
           }
         };
         reader.readAsText(file);
@@ -155,10 +180,99 @@
     if (isPlaying) {
       audioElement.pause();
       isPlaying = false;
+
+      // Wenn wir aufnehmen, stoppen wir auch die Aufnahme
+      if (isRecording) {
+        stopRecording();
+      }
     } else {
       audioElement.play();
       isPlaying = true;
     }
+  }
+
+  // Funktion zum Starten der Aufzeichnung
+  function startRecording() {
+    if (!isPlaying || !analyser) return;
+
+    recordedData = [];
+    isRecording = true;
+    recordStartTime = Date.now();
+
+    // Setze vorherige Daten zurück
+    previousData = [];
+  }
+
+  // Funktion zum Stoppen der Aufzeichnung
+  function stopRecording() {
+    isRecording = false;
+  }
+
+  // Funktion zum Aufzeichnen eines Frames
+  function recordFrame() {
+    if (!isRecording || !analyser || !frequencyData) return;
+
+    // Reduziere die Aufnahmefrequenz für kleinere Dateien
+    if (recordedData.length % recordingInterval !== 0) {
+      return;
+    }
+
+    // Kopiere die aktuellen Frequenzdaten und reduziere Genauigkeit
+    const frameData = Array.from(frequencyData).map((val) => {
+      // Normalisieren (0-255 zu 0-1) und auf 2 Dezimalstellen runden
+      return Math.round((val / 255) * 100) / 100;
+    });
+
+    recordedData.push(frameData);
+  }
+
+  // Funktion zum Herunterladen der aufgezeichneten Daten
+  function downloadRecordedData() {
+    if (recordedData.length === 0) {
+      alert(
+        "Keine Daten zum Herunterladen verfügbar. Bitte zuerst aufzeichnen."
+      );
+      return;
+    }
+
+    // Erstelle ein Metadaten-Objekt
+    const metadata = {
+      originalFile: audioFileName,
+      recordingDate: new Date().toISOString(),
+      fftSize: params.fftSize,
+      frameCount: recordedData.length,
+      frameInterval: recordingInterval,
+      duration: (Date.now() - recordStartTime) / 1000,
+      params: { ...params }
+    };
+
+    // Kombiniere Metadaten und Frames
+    const exportData = {
+      metadata: metadata,
+      frames: recordedData
+    };
+
+    // Erstelle einen Blob mit den JSON-Daten
+    const dataBlob = new Blob([JSON.stringify(exportData)], {
+      type: "application/json"
+    });
+
+    // Erstelle einen Download-Link
+    const url = URL.createObjectURL(dataBlob);
+    const a = document.createElement("a");
+    a.href = url;
+
+    // Verwende den Dateinamen der Audiodatei, aber mit .json-Endung
+    const baseName = audioFileName.split(".").slice(0, -1).join(".");
+    a.download = `${baseName || "frequency-data"}.json`;
+
+    // Füge den Link zum DOM hinzu, klicke ihn an und entferne ihn wieder
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Bereinige die URL
+    URL.revokeObjectURL(url);
   }
 
   async function initVisualization() {
@@ -233,6 +347,11 @@
         // Audio-Visualisierung
         analyser.getByteFrequencyData(frequencyData);
 
+        // Wenn wir aufzeichnen, speichere den aktuellen Frame
+        if (isRecording) {
+          recordFrame();
+        }
+
         // Daten normalisieren (0-255 zu 0-1)
         const normalizedData = Array.from(frequencyData).map(
           (val) => val / 255
@@ -289,7 +408,7 @@
         for (let i = 0; i < positionAttribute.count; i++) {
           const x = positionAttribute.getX(i);
           const y = positionAttribute.getY(i);
-          const z = positionAttribute.getZ(i);
+          const z = initialPositions[i * 3 + 2]; // Original Z-Position
 
           // Frequency band processing
           const frequencyIndex = i % currentData.length;
@@ -311,16 +430,17 @@
             dataIndex < currentData.length / 4 ? params.bassBoost : 1;
 
           // Calculate wave height with frequency scaling
+          // Anpassung, um sowohl mit altem als auch neuem Format zu funktionieren
           const waveHeight =
-            Math.log(1 + smoothedValue / params.waveDivisor) *
+            smoothedValue *
             params.waveAmplitude *
-            bassBoostFactor;
+            bassBoostFactor *
+            (isMobile ? 2.5 : 4.0);
 
           const newZ =
             z +
             Math.sin(x * params.waveFrequency + Date.now() * params.waveSpeed) *
-              waveHeight *
-              (isMobile ? 2.5 : 4.0);
+              waveHeight;
 
           positionAttribute.setZ(i, newZ);
         }
@@ -422,6 +542,60 @@
             </select>
           </div>
         </label>
+      </div>
+
+      <div class="control-group">
+        <h3>Frequenzdaten speichern</h3>
+        <div class="record-controls">
+          <div class="control-row">
+            <label>
+              Aufnahme-Intervall:
+              <select bind:value={recordingInterval}>
+                <option value={1}>Jeden Frame (groß)</option>
+                <option value={2}>Jeden 2. Frame</option>
+                <option value={3}>Jeden 3. Frame (Standard)</option>
+                <option value={4}>Jeden 4. Frame</option>
+                <option value={6}>Jeden 6. Frame (klein)</option>
+              </select>
+            </label>
+          </div>
+
+          {#if !isRecording}
+            <button
+              class="record-button"
+              on:click={startRecording}
+              disabled={!isPlaying}
+            >
+              Aufzeichnen starten
+            </button>
+          {:else}
+            <button class="record-button recording" on:click={stopRecording}>
+              Aufzeichnung stoppen ({Math.floor(
+                (Date.now() - recordStartTime) / 1000
+              )}s)
+            </button>
+          {/if}
+
+          <button
+            class="download-button"
+            on:click={downloadRecordedData}
+            disabled={recordedData.length === 0}
+          >
+            Frequenzdaten herunterladen ({recordedData.length} Frames)
+          </button>
+        </div>
+
+        {#if recordedData.length > 0}
+          <div class="info-text">
+            {recordedData.length} Frames aufgezeichnet ({(
+              (recordedData.length / 60) *
+              recordingInterval
+            ).toFixed(1)} Sekunden bei 60 FPS)<br />
+            Geschätzte Dateigröße: ~{Math.round(
+              (recordedData.length * frequencyData.length * 4) / 1024
+            )} KB
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -700,6 +874,70 @@
 
   .audio-button:hover {
     background-color: #333;
+  }
+
+  .record-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .record-button,
+  .download-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+  }
+
+  .record-button {
+    background-color: #f44336;
+    color: white;
+  }
+
+  .record-button:hover:not(:disabled) {
+    background-color: #d32f2f;
+  }
+
+  .record-button.recording {
+    background-color: #d32f2f;
+    animation: pulse 1.5s infinite;
+  }
+
+  .download-button {
+    background-color: #4caf50;
+    color: white;
+  }
+
+  .download-button:hover:not(:disabled) {
+    background-color: #388e3c;
+  }
+
+  .record-button:disabled,
+  .download-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+  }
+
+  .info-text {
+    font-size: 12px;
+    color: #666;
+    margin-top: 8px;
+  }
+
+  @keyframes pulse {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 1;
+    }
   }
 
   hr {

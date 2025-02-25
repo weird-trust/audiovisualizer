@@ -45,7 +45,8 @@
     torusSize: isMobile ? 5 : 10,
     torusThickness: isMobile ? 1.5 : 3,
     cameraDistance: isMobile ? 15 : 25,
-    fftSize: 1024 // Für Audio-Analyse, muss eine Potenz von 2 sein
+    fftSize: 1024, // Für Audio-Analyse, muss eine Potenz von 2 sein
+    geometryType: "torus" // Standard-Geometrie
   };
 
   function toggleControls() {
@@ -60,6 +61,122 @@
     } catch (error) {
       console.error("Error loading frequency data:", error);
       return [];
+    }
+  }
+
+  // Funktion zum Wechseln der Geometrie
+  function changeGeometry(geometryType) {
+    if (!sphereMesh) return;
+
+    // Parameter für jede Geometrie
+    const geometryParams = {
+      torus: {
+        geometry: new THREE.TorusGeometry(
+          params.torusSize,
+          params.torusThickness,
+          32,
+          32
+        ),
+        scale: 1,
+        rotationX: Math.PI / 2
+      },
+      sphere: {
+        geometry: new THREE.SphereGeometry(params.torusSize, 32, 32),
+        scale: 1,
+        rotationX: 0
+      },
+      box: {
+        geometry: new THREE.BoxGeometry(
+          params.torusSize * 1.5,
+          params.torusSize * 1.5,
+          params.torusSize * 1.5,
+          10,
+          10,
+          10
+        ),
+        scale: 1,
+        rotationX: 0
+      },
+      cylinder: {
+        geometry: new THREE.CylinderGeometry(
+          params.torusSize / 1.5,
+          params.torusSize / 1.5,
+          params.torusSize * 2,
+          32,
+          32
+        ),
+        scale: 1,
+        rotationX: Math.PI / 2
+      },
+      cone: {
+        geometry: new THREE.ConeGeometry(
+          params.torusSize,
+          params.torusSize * 2,
+          32,
+          32
+        ),
+        scale: 1,
+        rotationX: Math.PI
+      },
+      torusKnot: {
+        geometry: new THREE.TorusKnotGeometry(
+          params.torusSize / 1.5,
+          params.torusThickness / 1.5,
+          100,
+          16
+        ),
+        scale: 1,
+        rotationX: Math.PI / 2
+      },
+      icosahedron: {
+        geometry: new THREE.IcosahedronGeometry(params.torusSize, 1),
+        scale: 1,
+        rotationX: 0
+      },
+      plane: {
+        geometry: new THREE.PlaneGeometry(
+          params.torusSize * 3,
+          params.torusSize * 3,
+          32,
+          32
+        ),
+        scale: 1,
+        rotationX: Math.PI / 2
+      }
+    };
+
+    // Wenn die gewählte Geometrie existiert
+    if (geometryParams[geometryType]) {
+      // Alte Geometrie speichern und löschen
+      if (geometry) {
+        geometry.dispose();
+      }
+
+      // Neue Geometrie erstellen
+      geometry = geometryParams[geometryType].geometry;
+      initialPositions = [...geometry.attributes.position.array];
+
+      // Material beibehalten
+      const material = sphereMesh.material;
+
+      // Altes Mesh aus der Szene entfernen
+      const scene = sphereMesh.parent;
+      scene.remove(sphereMesh);
+
+      // Neues Mesh erstellen
+      sphereMesh = new THREE.Mesh(geometry, material);
+      sphereMesh.rotation.x = geometryParams[geometryType].rotationX;
+      sphereMesh.scale.set(
+        geometryParams[geometryType].scale,
+        geometryParams[geometryType].scale,
+        geometryParams[geometryType].scale
+      );
+
+      // Neues Mesh zur Szene hinzufügen
+      scene.add(sphereMesh);
+
+      // Geometrietyp in Parametern speichern
+      params.geometryType = geometryType;
     }
   }
 
@@ -167,6 +284,11 @@
     // Event-Listener für Audio-Ende
     audioElement.addEventListener("ended", () => {
       isPlaying = false;
+
+      // Wenn wir aufnehmen, stoppen wir auch die Aufnahme
+      if (isRecording) {
+        stopRecording();
+      }
     });
   }
 
@@ -301,12 +423,24 @@
     renderer.setClearColor(0xffffff, 1);
     container.appendChild(renderer.domElement);
 
-    geometry = new THREE.TorusGeometry(
-      params.torusSize,
-      params.torusThickness,
-      32,
-      32
-    );
+    // Anfängliche Geometrie basierend auf params.geometryType erstellen
+    switch (params.geometryType) {
+      case "torus":
+        geometry = new THREE.TorusGeometry(
+          params.torusSize,
+          params.torusThickness,
+          32,
+          32
+        );
+        break;
+      default:
+        geometry = new THREE.TorusGeometry(
+          params.torusSize,
+          params.torusThickness,
+          32,
+          32
+        );
+    }
 
     initialPositions = [...geometry.attributes.position.array];
 
@@ -600,6 +734,28 @@
     {/if}
 
     <hr />
+
+    <div class="control-group">
+      <h3>Visualisierung</h3>
+      <label>
+        Geometrie
+        <div class="control-row">
+          <select
+            bind:value={params.geometryType}
+            on:change={() => changeGeometry(params.geometryType)}
+          >
+            <option value="torus">Torus (Ring)</option>
+            <option value="sphere">Kugel</option>
+            <option value="box">Würfel</option>
+            <option value="cylinder">Zylinder</option>
+            <option value="cone">Kegel</option>
+            <option value="torusKnot">Torusknoten</option>
+            <option value="icosahedron">Ikosaeder</option>
+            <option value="plane">Ebene</option>
+          </select>
+        </div>
+      </label>
+    </div>
 
     <div class="control-group">
       <label>
